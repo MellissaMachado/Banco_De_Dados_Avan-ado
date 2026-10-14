@@ -1,0 +1,227 @@
+-- 1. CRIACAO DA TABELA ENERGIA
+-- Armazena o consumo mensal e os valores calculados da fatura.
+
+CREATE TABLE ENERGIA (
+    CODIGO NUMBER PRIMARY KEY,
+    KWH NUMBER,
+    FORNECIMENTO NUMBER(10,2),
+    ICMS NUMBER(10,2),
+    COFINS NUMBER(10,2),
+    PIS_PASEP NUMBER(10,2),
+    ICMS_COFINS NUMBER(10,2),
+    ICMS_PIS_PASEP NUMBER(10,2),
+    FATURA NUMBER(10,2)
+);
+
+-- 2.1. FUNCAO FORNECIMENTO
+-- Calcula o custo da energia usando a tarifa de 0.29349 por kWh.
+
+CREATE OR REPLACE FUNCTION FORNECIMENTO(x NUMBER)
+RETURN NUMBER IS
+BEGIN
+    RETURN ROUND(x * 0.29349, 2);
+END;
+/
+
+-- 2.2. FUNCAO ICMS
+-- Usa o fator 0.136363 para consumo ate 200 kWh
+-- e 0.333333 para consumo acima de 200 kWh.
+
+CREATE OR REPLACE FUNCTION ICMS(x NUMBER)
+RETURN NUMBER IS
+    v_fornecimento NUMBER;
+    v_fator NUMBER;
+BEGIN
+    -- Calcula o fornecimento sem arredondamento intermediario.
+    v_fornecimento := x * 0.29349;
+
+    -- Seleciona o fator de acordo com o consumo.
+    IF x <= 200 THEN
+        v_fator := 0.136363;
+    ELSE
+        v_fator := 0.333333;
+    END IF;
+
+    -- Retorna o valor do ICMS arredondado para duas casas.
+    RETURN ROUND(v_fornecimento * v_fator, 2);
+END;
+/
+
+-- 2.3. FUNCAO COFINS
+-- Aplica o fator correspondente ao consumo mensal.
+
+CREATE OR REPLACE FUNCTION COFINS(x NUMBER)
+RETURN NUMBER IS
+    v_fornecimento NUMBER;
+    v_fator NUMBER;
+BEGIN
+    -- Calcula o fornecimento de energia.
+    v_fornecimento := x * 0.29349;
+
+    -- Define o fator do COFINS conforme o enunciado.
+    IF x <= 200 THEN
+        v_fator := 0.0524724;
+    ELSE
+        v_fator := 0.0622579;
+    END IF;
+
+    -- Calcula e retorna o valor do COFINS.
+    RETURN ROUND(v_fornecimento * v_fator, 2);
+END;
+/
+
+-- 2.4. FUNCAO PIS_PASEP
+-- Calcula o valor do PIS/PASEP conforme o consumo.
+
+CREATE OR REPLACE FUNCTION PIS_PASEP(x NUMBER)
+RETURN NUMBER IS
+    v_fornecimento NUMBER;
+    v_fator NUMBER;
+BEGIN
+    -- Calcula o fornecimento de energia.
+    v_fornecimento := x * 0.29349;
+
+    -- Seleciona o fator do PIS/PASEP.
+    IF x <= 200 THEN
+        v_fator := 0.0114859;
+    ELSE
+        v_fator := 0.0136278;
+    END IF;
+
+    -- Retorna o valor calculado do PIS/PASEP.
+    RETURN ROUND(v_fornecimento * v_fator, 2);
+END;
+/
+
+-- 2.5. FUNCAO ICMS_COFINS
+-- Multiplica o fornecimento pelos fatores de ICMS e COFINS.
+
+CREATE OR REPLACE FUNCTION ICMS_COFINS(x NUMBER)
+RETURN NUMBER IS
+    v_fornecimento NUMBER;
+    v_fator_icms NUMBER;
+    v_fator_cofins NUMBER;
+BEGIN
+    -- Calcula o fornecimento sem arredondamento intermediario.
+    v_fornecimento := x * 0.29349;
+
+    -- Define os fatores de acordo com o consumo.
+    IF x <= 200 THEN
+        v_fator_icms := 0.136363;
+        v_fator_cofins := 0.0524724;
+    ELSE
+        v_fator_icms := 0.333333;
+        v_fator_cofins := 0.0622579;
+    END IF;
+
+    -- Calcula o valor combinado dos dois fatores.
+    RETURN ROUND(
+        v_fornecimento * v_fator_icms * v_fator_cofins, 2
+    );
+END;
+/
+
+-- 2.6. FUNCAO ICMS_PIS_PASEP
+-- Multiplica o fornecimento pelos fatores de ICMS e PIS/PASEP.
+
+CREATE OR REPLACE FUNCTION ICMS_PIS_PASEP(x NUMBER)
+RETURN NUMBER IS
+    v_fornecimento NUMBER;
+    v_fator_icms NUMBER;
+    v_fator_pis NUMBER;
+BEGIN
+    -- Calcula o fornecimento de energia.
+    v_fornecimento := x * 0.29349;
+
+    -- Define os fatores de acordo com o consumo.
+    IF x <= 200 THEN
+        v_fator_icms := 0.136363;
+        v_fator_pis := 0.0114859;
+    ELSE
+        v_fator_icms := 0.333333;
+        v_fator_pis := 0.0136278;
+    END IF;
+
+    -- Calcula o valor combinado de ICMS e PIS/PASEP.
+    RETURN ROUND(
+        v_fornecimento * v_fator_icms * v_fator_pis, 2
+    );
+END;
+/
+
+-- 2.7. FUNCAO FATURA
+-- Soma fornecimento, impostos e valores combinados.
+
+CREATE OR REPLACE FUNCTION FATURA(
+    x1 REAL,
+    x2 REAL,
+    x3 REAL,
+    x4 REAL,
+    x5 REAL,
+    x6 REAL
+)
+RETURN NUMBER IS
+BEGIN
+    -- Retorna a soma dos seis componentes da fatura.
+    RETURN ROUND(x1 + x2 + x3 + x4 + x5 + x6, 2);
+END;
+/
+
+-- 3. TRIGGER PROCESSA_FATURA
+-- Executa antes da insercao e calcula os valores automaticamente.
+
+CREATE OR REPLACE TRIGGER PROCESSA_FATURA
+BEFORE INSERT ON ENERGIA
+FOR EACH ROW
+BEGIN
+    -- Calcula o fornecimento e os impostos.
+    :NEW.FORNECIMENTO := FORNECIMENTO(:NEW.KWH);
+    :NEW.ICMS := ICMS(:NEW.KWH);
+    :NEW.COFINS := COFINS(:NEW.KWH);
+    :NEW.PIS_PASEP := PIS_PASEP(:NEW.KWH);
+
+    -- Calcula os valores combinados dos impostos.
+    :NEW.ICMS_COFINS := ICMS_COFINS(:NEW.KWH);
+    :NEW.ICMS_PIS_PASEP := ICMS_PIS_PASEP(:NEW.KWH);
+
+    -- Calcula o valor total da fatura.
+    :NEW.FATURA := FATURA(
+        :NEW.FORNECIMENTO,
+        :NEW.ICMS,
+        :NEW.COFINS,
+        :NEW.PIS_PASEP,
+        :NEW.ICMS_COFINS,
+        :NEW.ICMS_PIS_PASEP
+    );
+END;
+/
+
+-- 4. PROCEDIMENTO INSERE_CONSUMO
+-- Insere os 12 meses, aumentando o consumo em 100 kWh por mes.
+
+CREATE OR REPLACE PROCEDURE INSERE_CONSUMO
+IS
+BEGIN
+    -- Percorre os meses de 1 a 12.
+    FOR mes IN 1..12 LOOP
+
+        -- Insere o codigo do mes e o consumo correspondente.
+        -- A trigger calcula os demais campos automaticamente.
+        INSERT INTO ENERGIA (CODIGO, KWH)
+        VALUES (mes, mes * 100);
+
+    END LOOP;
+
+    -- Confirma as insercoes realizadas.
+    COMMIT;
+END;
+/
+
+-- 5. BLOCO DE EXECUCAO
+-- Chama o procedimento que insere os 12 meses.
+
+BEGIN
+    INSERE_CONSUMO;
+END;
+/
+-
